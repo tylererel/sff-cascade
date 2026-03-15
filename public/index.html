@@ -16,13 +16,21 @@
 </head>
 <body class="bg-gray-50 min-h-screen">
   <div id="root"></div>
-
+ 
   <script type="text/babel">
-    const { useState, useEffect, useCallback } = React;
-
+    const { useState, useEffect, useCallback, useMemo } = React;
+ 
     // ── AREAS ────────────────────────────────────────────────────────────────
     const AREAS = ['🌿 Life and Living', '🏦 Business & Professional Life'];
-
+ 
+    // Area matching: handles items stored with or without emoji prefix
+    const areaMatches = (itemArea, selectedArea) => {
+      if (!itemArea) return false;
+      if (itemArea === selectedArea) return true;
+      // e.g. selectedArea = "🌿 Life and Living", itemArea = "Life and Living"
+      return selectedArea.endsWith(itemArea) || itemArea.endsWith(selectedArea);
+    };
+ 
     // ── STATUS CONFIG ────────────────────────────────────────────────────────
     const NS = {
       'Confirmed':    { bg: 'bg-emerald-50', border: 'border-emerald-400', badge: 'bg-emerald-100 text-emerald-700', dot: 'bg-emerald-500' },
@@ -30,14 +38,24 @@
       'Gap Detected': { bg: 'bg-red-50',     border: 'border-red-400',     badge: 'bg-red-100 text-red-700',       dot: 'bg-red-500'     },
     };
     const nsCfg = s => NS[s] || NS['Needs Review'];
-
+ 
     const RESULT_STATUS = {
       'Done':         'bg-emerald-100 text-emerald-700',
       'In Progress':  'bg-blue-100 text-blue-700',
       'At All Times': 'bg-purple-100 text-purple-700',
-      'To Do':        'bg-gray-100 text-gray-500',
+      'To Do':        'bg-gray-100 text-gray-600',
     };
-
+ 
+    const TYPE_COLORS = {
+      'Document': 'bg-blue-100 text-blue-700',
+      'Link':     'bg-green-100 text-green-700',
+      'Note':     'bg-amber-100 text-amber-700',
+      'Context':  'bg-purple-100 text-purple-700',
+      'Resource': 'bg-orange-100 text-orange-700',
+    };
+ 
+    const STATUS_ORDER = ['In Progress', 'At All Times', 'To Do', 'Done'];
+ 
     // ── SHARED ATOMS ─────────────────────────────────────────────────────────
     function NSBadge({ status }) {
       const c = nsCfg(status);
@@ -48,7 +66,7 @@
         </span>
       );
     }
-
+ 
     function StatusPill({ status }) {
       return (
         <span className={`text-xs font-medium px-2 py-0.5 rounded-full whitespace-nowrap ${RESULT_STATUS[status] || RESULT_STATUS['To Do']}`}>
@@ -56,7 +74,7 @@
         </span>
       );
     }
-
+ 
     function SectionHeader({ color, title, count }) {
       return (
         <div className="flex items-center gap-2 mb-3">
@@ -66,7 +84,7 @@
         </div>
       );
     }
-
+ 
     function EvalPrompt({ label, onConfirm, onGap, onCancel, saving }) {
       return (
         <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-3 mt-2">
@@ -88,39 +106,48 @@
         </div>
       );
     }
-
+ 
     // ── HIERARCHY VIEW ────────────────────────────────────────────────────────
     function HResult({ result }) {
       return (
         <div className="flex items-start gap-2 py-1.5 px-2 rounded hover:bg-white/70 transition-colors">
           <span className="text-gray-300 text-xs mt-0.5 flex-shrink-0">▸</span>
           <span className="text-sm text-gray-700 flex-1 leading-snug">{result.text}</span>
-          <StatusPill status={result.status} />
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            {result.dueDate && result.status === 'To Do' && (
+              <span className="text-xs text-gray-400 whitespace-nowrap">
+                Due {new Date(result.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+              </span>
+            )}
+            <StatusPill status={result.status} />
+          </div>
         </div>
       );
     }
-
+ 
     function HOutcome({ outcome, allResults, onUpdate }) {
       const [showEval, setShowEval] = useState(false);
       const [saving, setSaving] = useState(false);
       const c = nsCfg(outcome.nsStatus);
       const myResults = allResults.filter(r => r.outcomeId === outcome.id);
-
+ 
       const save = async (status) => {
         setSaving(true); setShowEval(false);
         await onUpdate('outcome', outcome.id, status);
         setSaving(false);
       };
-
+ 
       return (
         <div className={`rounded-lg border-l-4 ${c.border} ${c.bg} p-3 mb-2`}>
-          <div className="flex items-start gap-2 mb-2">
-            <span className="text-xs font-bold text-gray-400 uppercase tracking-wide mt-0.5 flex-shrink-0 w-14">Outcome</span>
-            <p className="text-sm font-medium text-gray-800 flex-1 leading-snug">{outcome.text}</p>
-            <NSBadge status={outcome.nsStatus} />
+          <div className="mb-2">
+            <div className="flex items-start justify-between gap-2 mb-1">
+              <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">Outcome</span>
+              <NSBadge status={outcome.nsStatus} />
+            </div>
+            <p className="text-sm font-medium text-gray-800 leading-snug">{outcome.text}</p>
           </div>
-
-          <div className="ml-0 pl-16">
+ 
+          <div className="pl-2">
             <p className="text-xs text-gray-400 font-semibold uppercase tracking-wide mb-1">
               Results Committed ({myResults.length})
             </p>
@@ -146,19 +173,19 @@
         </div>
       );
     }
-
+ 
     function HConcern({ concern, idx, allOutcomes, allResults, onUpdate }) {
       const [showEval, setShowEval] = useState(false);
       const [saving, setSaving] = useState(false);
       const c = nsCfg(concern.nsStatus);
       const myOutcomes = allOutcomes.filter(o => o.concernIds.includes(concern.id));
-
+ 
       const save = async (status) => {
         setSaving(true); setShowEval(false);
         await onUpdate('concern', concern.id, status);
         setSaving(false);
       };
-
+ 
       return (
         <div className={`rounded-xl border-2 ${c.border} ${c.bg} p-4 mb-5`}>
           <div className="flex items-start gap-3 mb-4">
@@ -168,7 +195,7 @@
             <p className="text-base font-semibold text-gray-900 flex-1 leading-snug pt-0.5">{concern.text}</p>
             <NSBadge status={concern.nsStatus} />
           </div>
-
+ 
           <div className="ml-11">
             <p className="text-xs text-gray-500 font-semibold uppercase tracking-wide mb-2">
               Outcomes fulfilling this concern ({myOutcomes.length})
@@ -197,7 +224,7 @@
         </div>
       );
     }
-
+ 
     function HierarchyView({ concerns, outcomes, results, onUpdate }) {
       if (concerns.length === 0) return <EmptyState />;
       return (
@@ -208,25 +235,56 @@
         </div>
       );
     }
-
+ 
     // ── AREA VIEW ─────────────────────────────────────────────────────────────
-    function AreaView({ concerns, outcomes, results, conditions, breakdowns, onUpdate }) {
+    function AreaView({ concerns, outcomes, results, conditions, breakdowns, relevantInfo, onUpdate }) {
       const [openEval, setOpenEval] = useState(null);
       const [saving, setSaving] = useState(false);
-
+      const [resultFilter, setResultFilter] = useState('All');
+      const [resultSort, setResultSort] = useState('default');
+ 
       const save = async (type, id, status) => {
         setSaving(true); setOpenEval(null);
         await onUpdate(type, id, status);
         setSaving(false);
       };
-
+ 
       const isOpen = (type, id) => openEval?.type === type && openEval?.id === id;
-
+ 
+      const STATUS_FILTERS = ['All', 'In Progress', 'At All Times', 'To Do', 'Done'];
+ 
+      const displayResults = useMemo(() => {
+        let filtered = resultFilter === 'All'
+          ? results
+          : results.filter(r => r.status === resultFilter);
+        return [...filtered].sort((a, b) => {
+          switch (resultSort) {
+            case 'alpha':
+              return a.text.localeCompare(b.text);
+            case 'dueDate': {
+              if (!a.dueDate && !b.dueDate) return 0;
+              if (!a.dueDate) return 1;
+              if (!b.dueDate) return -1;
+              return new Date(a.dueDate) - new Date(b.dueDate);
+            }
+            case 'status': {
+              return STATUS_ORDER.indexOf(a.status) - STATUS_ORDER.indexOf(b.status);
+            }
+            case 'outcome': {
+              const aO = outcomes.find(o => o.id === a.outcomeId)?.text ?? '';
+              const bO = outcomes.find(o => o.id === b.outcomeId)?.text ?? '';
+              return aO.localeCompare(bO);
+            }
+            default: return 0;
+          }
+        });
+      }, [results, outcomes, resultFilter, resultSort]);
+ 
       if (concerns.length === 0) return <EmptyState />;
-
+ 
       return (
         <div className="space-y-8">
-
+ 
           {/* ── CONCERNS ── */}
           <section>
             <SectionHeader color="bg-gray-900" title="Concerns" count={concerns.length} />
@@ -266,7 +324,7 @@
               })}
             </div>
           </section>
-
+ 
           {/* ── OUTCOMES ── */}
           <section>
             <SectionHeader color="bg-indigo-500" title="Outcomes" count={outcomes.length} />
@@ -278,7 +336,7 @@
                   const idx = concerns.findIndex(c => c.id === cid);
                   return idx >= 0 ? idx + 1 : null;
                 }).filter(Boolean);
-
+ 
                 return (
                   <div key={o.id} className={`rounded-lg border-l-4 ${cfg.border} ${cfg.bg} p-3`}>
                     <div className="flex items-start gap-2">
@@ -326,32 +384,67 @@
               })}
             </div>
           </section>
-
+ 
           {/* ── RESULTS ── */}
           <section>
-            <SectionHeader color="bg-emerald-500" title="Results Committed" count={results.length} />
+            <SectionHeader color="bg-emerald-500" title="Results Committed" count={displayResults.length} />
+ 
+            {/* Filter pills */}
+            <div className="flex flex-wrap gap-1.5 mb-2">
+              {STATUS_FILTERS.map(f => (
+                <button key={f} onClick={() => setResultFilter(f)}
+                  className={`text-xs px-3 py-1 rounded-full font-medium transition-colors border ${
+                    resultFilter === f
+                      ? 'bg-gray-900 text-white border-gray-900'
+                      : 'bg-white text-gray-500 border-gray-200 hover:border-gray-400'
+                  }`}>
+                  {f}
+                </button>
+              ))}
+              <div className="ml-auto flex items-center gap-1.5">
+                <span className="text-xs text-gray-400">Sort:</span>
+                <select value={resultSort} onChange={e => setResultSort(e.target.value)}
+                  className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white text-gray-600 focus:outline-none focus:border-gray-400">
+                  <option value="default">Default</option>
+                  <option value="alpha">A → Z</option>
+                  <option value="dueDate">Due Date</option>
+                  <option value="status">Status</option>
+                  <option value="outcome">Outcome</option>
+                </select>
+              </div>
+            </div>
+ 
             <div className="space-y-1.5">
-              {results.map(r => {
-                const outcome = outcomes.find(o => o.id === r.outcomeId);
-                return (
-                  <div key={r.id} className="flex items-start gap-2 bg-white border border-gray-100 rounded-lg p-2.5 hover:border-gray-200 transition-colors">
-                    <span className="text-gray-300 text-xs mt-0.5 flex-shrink-0">▸</span>
-                    <span className="text-sm text-gray-700 flex-1 leading-snug">{r.text}</span>
-                    <div className="flex items-center gap-2 flex-shrink-0 ml-2">
-                      {outcome && (
-                        <span className="hidden md:inline text-xs bg-indigo-100 text-indigo-600 px-1.5 py-0.5 rounded-full truncate max-w-[200px]"
-                          title={outcome.text}>
-                          → {outcome.text.length > 32 ? outcome.text.substring(0, 32) + '…' : outcome.text}
-                        </span>
-                      )}
-                      <StatusPill status={r.status} />
-                    </div>
-                  </div>
-                );
-              })}
+              {displayResults.length === 0
+                ? <p className="text-sm text-gray-400 italic py-4 text-center">No results match this filter.</p>
+                : displayResults.map(r => {
+                    const outcome = outcomes.find(o => o.id === r.outcomeId);
+                    return (
+                      <div key={r.id} className="flex items-start gap-2 bg-white border border-gray-100 rounded-lg p-2.5 hover:border-gray-200 transition-colors">
+                        <span className="text-gray-300 text-xs mt-0.5 flex-shrink-0">▸</span>
+                        <div className="flex-1 min-w-0">
+                          <span className="text-sm text-gray-700 leading-snug">{r.text}</span>
+                          {outcome && (
+                            <div className="text-xs text-indigo-400 mt-0.5 truncate" title={outcome.text}>
+                              → {outcome.text.length > 50 ? outcome.text.substring(0, 50) + '…' : outcome.text}
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">
+                          {r.dueDate && r.status === 'To Do' && (
+                            <span className="text-xs text-gray-400 whitespace-nowrap">
+                              Due {new Date(r.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                            </span>
+                          )}
+                          <StatusPill status={r.status} />
+                        </div>
+                      </div>
+                    );
+                  })
+              }
             </div>
           </section>
-
+ 
           {/* ── CONDITIONS ── */}
           {conditions.length > 0 && (
             <section>
@@ -366,7 +459,35 @@
               </div>
             </section>
           )}
-
+ 
+          {/* ── RELEVANT INFORMATION ── */}
+          {relevantInfo && relevantInfo.length > 0 && (
+            <section>
+              <SectionHeader color="bg-sky-500" title="Relevant Information" count={relevantInfo.length} />
+              <div className="space-y-1.5">
+                {relevantInfo.map(ri => (
+                  <div key={ri.id} className="flex items-start gap-2 bg-sky-50 border border-sky-200 rounded-lg p-2.5">
+                    <div className="flex-1 min-w-0">
+                      {ri.url
+                        ? <a href={ri.url} target="_blank" rel="noopener noreferrer"
+                            className="text-sm font-medium text-sky-700 hover:text-sky-900 hover:underline leading-snug">
+                            {ri.text}
+                          </a>
+                        : <span className="text-sm font-medium text-gray-800">{ri.text}</span>
+                      }
+                      {ri.notes && <p className="text-xs text-gray-500 mt-0.5 leading-snug">{ri.notes}</p>}
+                    </div>
+                    {ri.type && (
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${TYPE_COLORS[ri.type] || 'bg-gray-100 text-gray-600'}`}>
+                        {ri.type}
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+ 
           {/* ── BREAKDOWNS ── */}
           {breakdowns.length > 0 && (
             <section>
@@ -398,7 +519,7 @@
         </div>
       );
     }
-
+ 
     // ── SCORECARD ─────────────────────────────────────────────────────────────
     function Scorecard({ concerns, outcomes }) {
       const cnt = (arr, s) => arr.filter(x => x.nsStatus === s).length;
@@ -431,7 +552,7 @@
         </div>
       );
     }
-
+ 
     // ── EMPTY STATE ───────────────────────────────────────────────────────────
     function EmptyState() {
       return (
@@ -442,28 +563,47 @@
         </div>
       );
     }
-
+ 
     // ── APP ───────────────────────────────────────────────────────────────────
     function App() {
-      const [data,     setData]     = useState(null);
-      const [loading,  setLoading]  = useState(true);
-      const [error,    setError]    = useState(null);
-      const [area,     setArea]     = useState(AREAS[0]);
-      const [view,     setView]     = useState('hierarchy');
-      const [toast,    setToast]    = useState(null);
-
+      const [data,          setData]          = useState(null);
+      const [loading,       setLoading]       = useState(true);
+      const [error,         setError]         = useState(null);
+      const [area,          setArea]          = useState(AREAS[0]);
+      const [view,          setView]          = useState('hierarchy');
+      const [toast,         setToast]         = useState(null);
+      const [hideAreaTabs,  setHideAreaTabs]  = useState(false);
+ 
+      // Detect ?area= URL param for per-area embeds
       useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        const areaParam = params.get('area');
+        if (areaParam) {
+          const matched = AREAS.find(a => a.endsWith(areaParam) || a === areaParam || a.includes(areaParam));
+          if (matched) setArea(matched);
+          setHideAreaTabs(true);
+        }
+      }, []);
+ 
+      const loadData = useCallback(() => {
+        setLoading(true);
+        setError(null);
         fetch('/api/cascade')
-          .then(r => r.json())
+          .then(r => {
+            if (!r.ok) return r.text().then(t => { throw new Error(t); });
+            return r.json();
+          })
           .then(d => { setData(d); setLoading(false); })
           .catch(e => { setError(e.message); setLoading(false); });
       }, []);
-
+ 
+      useEffect(() => { loadData(); }, [loadData]);
+ 
       const showToast = (msg, ok = true) => {
         setToast({ msg, ok });
         setTimeout(() => setToast(null), 2500);
       };
-
+ 
       const handleUpdate = useCallback(async (type, id, status) => {
         // Optimistic update
         setData(prev => {
@@ -485,7 +625,7 @@
           showToast(`Save failed: ${e.message}`, false);
         }
       }, []);
-
+ 
       if (loading) return (
         <div className="flex items-center justify-center min-h-screen">
           <div className="text-center">
@@ -494,7 +634,7 @@
           </div>
         </div>
       );
-
+ 
       if (error) return (
         <div className="flex items-center justify-center min-h-screen p-6">
           <div className="bg-red-50 border border-red-200 rounded-xl p-6 max-w-md text-center">
@@ -504,38 +644,45 @@
           </div>
         </div>
       );
-
-      const { concerns, outcomes, results, conditions, breakdowns } = data;
-      const filter  = arr => arr.filter(x => x.area === area);
-      const aC = filter(concerns);
-      const aO = filter(outcomes);
-      const aR = filter(results);
-      const aCond = filter(conditions);
-      const aBD   = filter(breakdowns);
-
-      const areaShort = a => a.replace(/^[^\s]+ /, '');
-
+ 
+      const filter  = arr => (arr || []).filter(x => areaMatches(x.area, area));
+      const aC    = filter(data.concerns);
+      const aO    = filter(data.outcomes);
+      const aR    = filter(data.results);
+      const aCond = filter(data.conditions);
+      const aBD   = filter(data.breakdowns);
+      const aRI   = filter(data.relevantInfo || []);
+ 
       return (
         <div className="max-w-4xl mx-auto p-5 font-sans">
-
+ 
           {/* Header */}
-          <div className="mb-5">
-            <h1 className="text-xl font-bold text-gray-900">Structure for Fulfillment Cascade</h1>
-            <p className="text-gray-400 text-sm mt-0.5">Necessity & Sufficiency Review — Live from Notion</p>
+          <div className="flex items-start justify-between mb-5">
+            <div>
+              <h1 className="text-xl font-bold text-gray-900">Structure for Fulfillment Cascade</h1>
+              <p className="text-gray-400 text-sm mt-0.5">Necessity & Sufficiency Review — Live from Notion</p>
+            </div>
+            <button onClick={loadData} disabled={loading}
+              className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-700 transition-colors disabled:opacity-40 mt-1 px-2 py-1 rounded-lg hover:bg-gray-100">
+              <span className={loading ? 'spin inline-block text-base' : 'inline-block text-base'}>↻</span>
+              <span>Refresh</span>
+            </button>
           </div>
-
-          {/* Area selector */}
-          <div className="flex gap-1 bg-white border border-gray-200 rounded-xl p-1 mb-3 shadow-sm w-fit">
-            {AREAS.map(a => (
-              <button key={a} onClick={() => setArea(a)}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                  area === a ? 'bg-gray-900 text-white shadow-sm' : 'text-gray-500 hover:text-gray-800'
-                }`}>
-                {a}
-              </button>
-            ))}
-          </div>
-
+ 
+          {/* Area selector — hidden when per-area embed */}
+          {!hideAreaTabs && (
+            <div className="flex gap-1 bg-white border border-gray-200 rounded-xl p-1 mb-3 shadow-sm w-fit">
+              {AREAS.map(a => (
+                <button key={a} onClick={() => setArea(a)}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                    area === a ? 'bg-gray-900 text-white shadow-sm' : 'text-gray-500 hover:text-gray-800'
+                  }`}>
+                  {a}
+                </button>
+              ))}
+            </div>
+          )}
+ 
           {/* View toggle */}
           <div className="flex gap-1 bg-white border border-gray-200 rounded-xl p-1 mb-5 shadow-sm w-fit">
             <button onClick={() => setView('hierarchy')}
@@ -551,16 +698,16 @@
               📋 Area View
             </button>
           </div>
-
+ 
           {/* Scorecard */}
           <Scorecard concerns={aC} outcomes={aO} />
-
+ 
           {/* Main view */}
           {view === 'hierarchy'
             ? <HierarchyView concerns={aC} outcomes={aO} results={aR} onUpdate={handleUpdate} />
-            : <AreaView concerns={aC} outcomes={aO} results={aR} conditions={aCond} breakdowns={aBD} onUpdate={handleUpdate} />
+            : <AreaView concerns={aC} outcomes={aO} results={aR} conditions={aCond} breakdowns={aBD} relevantInfo={aRI} onUpdate={handleUpdate} />
           }
-
+ 
           {/* Toast */}
           {toast && (
             <div className={`fixed bottom-5 right-5 px-4 py-2.5 rounded-xl text-sm font-medium shadow-lg transition-all ${
@@ -572,7 +719,7 @@
         </div>
       );
     }
-
+ 
     ReactDOM.createRoot(document.getElementById('root')).render(<App />);
   </script>
 </body>
