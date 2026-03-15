@@ -46,6 +46,13 @@
       'To Do':        'bg-gray-100 text-gray-600',
     };
  
+    // Ensure URLs always have a protocol so they don't resolve as relative paths
+    const safeUrl = url => {
+      if (!url) return null;
+      if (url.startsWith('http://') || url.startsWith('https://')) return url;
+      return 'https://' + url;
+    };
+ 
     const TYPE_COLORS = {
       'Document': 'bg-blue-100 text-blue-700',
       'Link':     'bg-green-100 text-green-700',
@@ -469,7 +476,7 @@
                   <div key={ri.id} className="flex items-start gap-2 bg-sky-50 border border-sky-200 rounded-lg p-2.5">
                     <div className="flex-1 min-w-0">
                       {ri.url
-                        ? <a href={ri.url} target="_blank" rel="noopener noreferrer"
+                        ? <a href={safeUrl(ri.url)} target="_blank" rel="noopener noreferrer"
                             className="text-sm font-medium text-sky-700 hover:text-sky-900 hover:underline leading-snug">
                             {ri.text}
                           </a>
