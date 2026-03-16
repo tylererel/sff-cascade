@@ -21,7 +21,13 @@
     const { useState, useEffect, useCallback, useMemo } = React;
  
     // ── AREAS ────────────────────────────────────────────────────────────────
-    const AREAS = ['🌿 Life and Living', '🏦 Business & Professional Life'];
+    const AREAS = [
+      '🏦 Business & Professional Life',
+      '📊 Ironpaper',
+      '🥰 Marriage',
+      '💵 Finances',
+      '🌿 Life and Living',
+    ];
  
     // Area matching: handles items stored with or without emoji prefix
     const areaMatches = (itemArea, selectedArea) => {
